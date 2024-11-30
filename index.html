@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Bank System mit QR-Download</title>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            margin-bottom: 20px;
+        }
+        #qrcode canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>QR Bank System mit QR-Download</h1>
+
+    <!-- Benutzer erstellen -->
+    <div class="container">
+        <h2>Benutzer erstellen</h2>
+        <input type="text" id="username" placeholder="Benutzername" required>
+        <button onclick="createUser()">Benutzer erstellen</button>
+    </div>
+
+    <!-- QR-Code scannen -->
+    <div class="container">
+        <h2>QR-Code scannen</h2>
+        <div id="reader" style="width:300px;"></div>
+        <p id="userInfo"></p>
+        <input type="number" id="amount" placeholder="Betrag" min="1">
+        <button onclick="deposit()">Einzahlen</button>
+        <button onclick="withdraw()">Auszahlen</button>
+    </div>
+
+    <script>
+        let users = {};
+
+        window.onload = function() {
+            const storedUsers = localStorage.getItem('users');
+            if (storedUsers) {
+                users = JSON.parse(storedUsers);
+            }
+        };
+
+        function createUser() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                alert('Bitte einen Benutzernamen eingeben.');
+                return;
+            }
+
+            if (users[username]) {
+                alert('Benutzer existiert bereits!');
+                return;
+            }
+
+            users[username] = { balance: 0 };
+            saveUsers();
+
+            // QR-Code generieren und herunterladen
+            QRCode.toCanvas(document.createElement('canvas'), username, { width: 200 }, function (error, canvas) {
+                if (error) console.error(error);
+
+                // QR-Code in JPEG umwandeln
+                const dataUrl = canvas.toDataURL('image/jpeg');
+                downloadQR(dataUrl, `${username}_qr_code.jpeg`);
+            });
+
+            alert(`Benutzer ${username} wurde erstellt!`);
+            document.getElementById('username').value = ''; // Eingabefeld zurücksetzen
+        }
+
+        function downloadQR(dataUrl, filename) {
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function onScanSuccess(qrCodeMessage) {
+            if (users[qrCodeMessage]) {
+                document.getElementById('userInfo').innerText = 
+                    `Benutzer: ${qrCodeMessage}, Kontostand: ${users[qrCodeMessage].balance}€`;
+            } else {
+                alert('Benutzer nicht gefunden!');
+            }
+        }
+
+        function deposit() {
+            const amount = parseFloat(document.getElementById('amount').value);
+            const userInfo = document.getElementById('userInfo').innerText;
+            if (!userInfo) {
+                alert('Bitte zuerst einen QR-Code scannen.');
+                return;
+            }
+            const username = userInfo.split(',')[0].split(': ')[1];
+
+            if (amount > 0) {
+                users[username].balance += amount;
+                saveUsers();
+                alert(`${amount}€ wurden eingezahlt.`);
+                updateUserInfo(username);
+            } else {
+                alert('Bitte einen gültigen Betrag eingeben.');
+            }
+        }
+
+        function withdraw() {
+            const amount = parseFloat(document.getElementById('amount').value);
+            const userInfo = document.getElementById('userInfo').innerText;
+            if (!userInfo) {
+                alert('Bitte zuerst einen QR-Code scannen.');
+                return;
+            }
+            const username = userInfo.split(',')[0].split(': ')[1];
+
+            if (amount > 0 && users[username].balance >= amount) {
+                users[username].balance -= amount;
+                saveUsers();
+                alert(`${amount}€ wurden abgezogen.`);
+                updateUserInfo(username);
+            } else {
+                alert('Ungültiger Betrag oder unzureichender Kontostand.');
+            }
+        }
+
+        function saveUsers() {
+            localStorage.setItem('users', JSON.stringify(users));
+        }
+
+        function updateUserInfo(username) {
+            document.getElementById('userInfo').innerText = 
+                `Benutzer: ${username}, Kontostand: ${users[username].balance}€`;
+        }
+
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { fps: 10, qrbox: 250 }, 
+            false
+        );
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+</body>
+</html>
