@@ -4,45 +4,92 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR-Code Banksystem</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            color: #343a40;
+            font-family: 'Arial', sans-serif;
+        }
+        .container {
+            margin-top: 50px;
+            max-width: 600px;
+        }
+        h1, h2 {
+            color: #007bff;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border: none;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #6c757d;
+        }
+    </style>
 </head>
 <body>
-    <h1>QR-Code Banksystem</h1>
+    <div class="container">
+        <h1 class="text-center">QR-Code Banksystem</h1>
 
-    <!-- Benutzer erstellen -->
-    <section>
-        <h2>Benutzer erstellen</h2>
-        <form id="createUserForm">
-            <label for="username">Benutzername:</label>
-            <input type="text" id="username" required>
-            <button type="submit">Benutzer erstellen</button>
-        </form>
-        <p id="userCreationStatus"></p>
-    </section>
+        <!-- Benutzer erstellen -->
+        <section class="mt-4">
+            <h2>Benutzer erstellen</h2>
+            <form id="createUserForm" class="mb-3">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Benutzername:</label>
+                    <input type="text" id="username" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Benutzer erstellen</button>
+            </form>
+            <div id="userCreationStatus" class="text-success"></div>
+        </section>
 
-    <!-- QR-Code überprüfen -->
-    <section>
-        <h2>QR-Code überprüfen</h2>
-        <input type="file" id="qrInput" accept="image/*">
-        <button id="verifyQrButton">QR-Code überprüfen</button>
-        <p id="verificationStatus"></p>
-    </section>
+        <!-- QR-Code scannen -->
+        <section class="mt-4">
+            <h2>QR-Code scannen</h2>
+            <p>Scannen Sie den QR-Code mit Ihrer Handy-Kamera, um Geld ein- oder auszuzahlen.</p>
+        </section>
 
-    <!-- Benutzer löschen -->
-    <section>
-        <h2>Alle Benutzer löschen</h2>
-        <button id="deleteUsersButton">Benutzer löschen (Passwort erforderlich)</button>
-    </section>
+        <!-- Benutzer löschen -->
+        <section class="mt-4">
+            <h2>Alle Benutzer löschen</h2>
+            <button id="deleteUsersButton" class="btn btn-danger w-100">Benutzer löschen (Passwort erforderlich)</button>
+        </section>
+    </div>
+
+    <footer>
+        © 2025 QR-Code Banksystem
+    </footer>
 
     <script>
-        // Benutzer-Datenbank (simuliert)
-        const users = new Map();
+        // Benutzer-Datenbank im localStorage
+        const usersKey = 'qrBankUsers';
+        const users = JSON.parse(localStorage.getItem(usersKey)) || {};
 
         // Benutzer erstellen
         document.getElementById('createUserForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = document.getElementById('username').value;
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                alert('Bitte geben Sie einen Benutzernamen ein.');
+                return;
+            }
+
             const hash = await sha256(username);
+            if (users[hash]) {
+                alert('Benutzer existiert bereits!');
+                return;
+            }
+
+            // Benutzer speichern
+            users[hash] = { username, balance: 0 };
+            localStorage.setItem(usersKey, JSON.stringify(users));
 
             // QR-Code generieren
             QRCode.toDataURL(hash, { type: 'image/jpeg' }, (err, url) => {
@@ -51,9 +98,6 @@
                     return;
                 }
 
-                // Benutzer speichern
-                users.set(hash, username);
-
                 // QR-Code herunterladen
                 const link = document.createElement('a');
                 link.href = url;
@@ -61,56 +105,27 @@
                 link.click();
 
                 document.getElementById('userCreationStatus').textContent = `Benutzer '${username}' erstellt. QR-Code heruntergeladen.`;
+                document.getElementById('username').value = '';
             });
-        });
-
-        // QR-Code überprüfen
-        document.getElementById('verifyQrButton').addEventListener('click', async () => {
-            const fileInput = document.getElementById('qrInput');
-            if (fileInput.files.length === 0) {
-                alert('Bitte wählen Sie ein Bild aus!');
-                return;
-            }
-
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-            reader.onload = async () => {
-                const imageData = reader.result;
-
-                // Simulierte QR-Code-Dekodierung (ersetzt durch eine echte Bibliothek)
-                const hash = await decodeQRCode(imageData);
-
-                if (users.has(hash)) {
-                    document.getElementById('verificationStatus').textContent = `Benutzer gefunden: ${users.get(hash)}`;
-                } else {
-                    document.getElementById('verificationStatus').textContent = 'QR-Code nicht erkannt!';
-                }
-            };
-            reader.readAsDataURL(file);
         });
 
         // Benutzer löschen
         document.getElementById('deleteUsersButton').addEventListener('click', () => {
             const password = prompt('Bitte geben Sie das Admin-Passwort ein:');
-            if (password === 'admin123') { // Passwortschutz
-                users.clear();
+            if (password === 'admin123') {
+                localStorage.removeItem(usersKey);
                 alert('Alle Benutzer wurden gelöscht.');
             } else {
                 alert('Falsches Passwort!');
             }
         });
 
-        // Hilfsfunktionen
+        // SHA-256 Hashing
         async function sha256(message) {
             const msgBuffer = new TextEncoder().encode(message);
             const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        async function decodeQRCode(imageData) {
-            // Diese Funktion simuliert die Decodierung. Ersetzen Sie sie durch eine echte QR-Code-Bibliothek.
-            return prompt('Bitte geben Sie den Hash aus dem QR-Code ein:');
         }
     </script>
 </body>
