@@ -14,6 +14,13 @@
         canvas {
             display: none;
         }
+        #reader {
+            margin-top: 20px;
+            width: 300px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
@@ -28,7 +35,8 @@
 
     <!-- QR-Scanner -->
     <h2>QR-Scanner:</h2>
-    <div id="reader" style="width: 300px;"></div>
+    <div id="reader"></div>
+    <button onclick="stopScanner()">Scanner stoppen</button>
 
     <script>
         // Geheimer Schlüssel für die Hash-Generierung
@@ -90,11 +98,40 @@
             a.click();
         }
 
-        // QR-Scanner
-        function onScanSuccess(qrCodeMessage) {
-            handleQRCode(qrCodeMessage);
+        // QR-Scanner starten
+        const html5QrCode = new Html5Qrcode("reader");
+        function startScanner() {
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                { fps: 10, qrbox: 250 },
+                onScanSuccess,
+                onScanError
+            ).catch(err => {
+                console.error(`QR-Scanner konnte nicht gestartet werden: ${err}`);
+            });
         }
 
+        // QR-Scanner stoppen
+        function stopScanner() {
+            html5QrCode.stop().then(() => {
+                console.log("QR-Scanner wurde gestoppt.");
+            }).catch(err => {
+                console.error("Fehler beim Stoppen des Scanners:", err);
+            });
+        }
+
+        // QR-Scan erfolgreich
+        async function onScanSuccess(qrCodeMessage) {
+            console.log(`QR-Code gescannt: ${qrCodeMessage}`);
+            await handleQRCode(qrCodeMessage);
+        }
+
+        // QR-Scan Fehler
+        function onScanError(error) {
+            console.warn(`QR-Scanner Fehler: ${error}`);
+        }
+
+        // QR-Code verarbeiten
         async function handleQRCode(qrCodeMessage) {
             try {
                 const [username, scannedHash] = qrCodeMessage.split(":");
@@ -113,16 +150,10 @@
                     alert('Benutzer nicht gefunden!');
                 }
             } catch (error) {
-                alert('Fehler beim Scannen des QR-Codes.');
+                alert('Fehler beim Verarbeiten des QR-Codes.');
+                console.error(error);
             }
         }
-
-        const html5QrCode = new Html5Qrcode("reader");
-        html5QrCode.start(
-            { facingMode: "environment" }, 
-            { fps: 10, qrbox: 250 },
-            onScanSuccess
-        );
 
         // Benutzer manuell löschen (Passwortgeschützt)
         function manualDeleteAllUsers(password) {
@@ -137,6 +168,9 @@
                 alert("Falsches Passwort! Zugriff verweigert.");
             }
         }
+
+        // Scanner beim Laden der Seite starten
+        startScanner();
     </script>
 </body>
 </html>
