@@ -1,55 +1,58 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Bank System mit QR-Download</title>
-    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <title>Bank QR-System</title>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
         }
-        .container {
-            margin-bottom: 20px;
-        }
-        #qrcode canvas {
+        canvas {
             display: none;
         }
     </style>
 </head>
 <body>
-    <h1>QR Bank System mit QR-Download</h1>
+    <h1>Bank QR-System</h1>
 
     <!-- Benutzer erstellen -->
-    <div class="container">
-        <h2>Benutzer erstellen</h2>
-        <input type="text" id="username" placeholder="Benutzername" required>
-        <button onclick="createUser()">Benutzer erstellen</button>
-    </div>
+    <input type="text" id="username" placeholder="Benutzername">
+    <button onclick="createUser()">Benutzer erstellen</button>
 
-    <!-- QR-Code scannen -->
-    <div class="container">
-        <h2>QR-Code scannen</h2>
-        <div id="reader" style="width:300px;"></div>
-        <p id="userInfo"></p>
-        <input type="number" id="amount" placeholder="Betrag" min="1">
-        <button onclick="deposit()">Einzahlen</button>
-        <button onclick="withdraw()">Auszahlen</button>
-    </div>
+    <h2>Benutzerinformationen:</h2>
+    <div id="userInfo"></div>
+
+    <!-- QR-Scanner -->
+    <h2>QR-Scanner:</h2>
+    <div id="reader" style="width: 300px;"></div>
 
     <script>
-        let users = {};
+        // Geheimer Schlüssel für die Hash-Generierung
+        const secretKey = "meinGeheimerSchlüssel";
 
-        window.onload = function() {
-            const storedUsers = localStorage.getItem('users');
-            if (storedUsers) {
-                users = JSON.parse(storedUsers);
-            }
-        };
+        // Benutzerliste (in localStorage gespeichert)
+        let users = JSON.parse(localStorage.getItem('users')) || {};
 
-        function createUser() {
+        // Benutzer speichern
+        function saveUsers() {
+            localStorage.setItem('users', JSON.stringify(users));
+        }
+
+        // SHA-256 Hash-Funktion
+        async function generateHash(data) {
+            const encoder = new TextEncoder();
+            const dataBuffer = encoder.encode(data);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Benutzer erstellen
+        async function createUser() {
             const username = document.getElementById('username').value.trim();
             if (!username) {
                 alert('Bitte einen Benutzernamen eingeben.');
@@ -64,90 +67,76 @@
             users[username] = { balance: 0 };
             saveUsers();
 
-            // QR-Code generieren und herunterladen
-            QRCode.toCanvas(document.createElement('canvas'), username, { width: 200 }, function (error, canvas) {
+            // Generiere den verschlüsselten QR-Code
+            const dataToHash = `${username}:${secretKey}`;
+            const hash = await generateHash(dataToHash); // SHA-256 Hash generieren
+            const qrData = `${username}:${hash}`;
+            QRCode.toCanvas(document.createElement('canvas'), qrData, { width: 200 }, function (error, canvas) {
                 if (error) console.error(error);
 
-                // QR-Code in JPEG umwandeln
                 const dataUrl = canvas.toDataURL('image/jpeg');
                 downloadQR(dataUrl, `${username}_qr_code.jpeg`);
             });
 
             alert(`Benutzer ${username} wurde erstellt!`);
-            document.getElementById('username').value = ''; // Eingabefeld zurücksetzen
+            document.getElementById('username').value = '';
         }
 
+        // QR-Code herunterladen
         function downloadQR(dataUrl, filename) {
-            const link = document.createElement('a');
-            link.href = dataUrl;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename;
+            a.click();
         }
 
+        // QR-Scanner
         function onScanSuccess(qrCodeMessage) {
-            if (users[qrCodeMessage]) {
-                document.getElementById('userInfo').innerText = 
-                    `Benutzer: ${qrCodeMessage}, Kontostand: ${users[qrCodeMessage].balance}€`;
-            } else {
-                alert('Benutzer nicht gefunden!');
+            handleQRCode(qrCodeMessage);
+        }
+
+        async function handleQRCode(qrCodeMessage) {
+            try {
+                const [username, scannedHash] = qrCodeMessage.split(":");
+                const dataToHash = `${username}:${secretKey}`;
+                const validHash = await generateHash(dataToHash);
+
+                if (scannedHash !== validHash) {
+                    alert('Ungültiger oder gefälschter QR-Code!');
+                    return;
+                }
+
+                if (users[username]) {
+                    document.getElementById('userInfo').innerText = 
+                        `Benutzer: ${username}, Kontostand: ${users[username].balance}€`;
+                } else {
+                    alert('Benutzer nicht gefunden!');
+                }
+            } catch (error) {
+                alert('Fehler beim Scannen des QR-Codes.');
             }
         }
 
-        function deposit() {
-            const amount = parseFloat(document.getElementById('amount').value);
-            const userInfo = document.getElementById('userInfo').innerText;
-            if (!userInfo) {
-                alert('Bitte zuerst einen QR-Code scannen.');
-                return;
-            }
-            const username = userInfo.split(',')[0].split(': ')[1];
-
-            if (amount > 0) {
-                users[username].balance += amount;
-                saveUsers();
-                alert(`${amount}€ wurden eingezahlt.`);
-                updateUserInfo(username);
-            } else {
-                alert('Bitte einen gültigen Betrag eingeben.');
-            }
-        }
-
-        function withdraw() {
-            const amount = parseFloat(document.getElementById('amount').value);
-            const userInfo = document.getElementById('userInfo').innerText;
-            if (!userInfo) {
-                alert('Bitte zuerst einen QR-Code scannen.');
-                return;
-            }
-            const username = userInfo.split(',')[0].split(': ')[1];
-
-            if (amount > 0 && users[username].balance >= amount) {
-                users[username].balance -= amount;
-                saveUsers();
-                alert(`${amount}€ wurden abgezogen.`);
-                updateUserInfo(username);
-            } else {
-                alert('Ungültiger Betrag oder unzureichender Kontostand.');
-            }
-        }
-
-        function saveUsers() {
-            localStorage.setItem('users', JSON.stringify(users));
-        }
-
-        function updateUserInfo(username) {
-            document.getElementById('userInfo').innerText = 
-                `Benutzer: ${username}, Kontostand: ${users[username].balance}€`;
-        }
-
-        const html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader", 
-            { fps: 10, qrbox: 250 }, 
-            false
+        const html5QrCode = new Html5Qrcode("reader");
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            { fps: 10, qrbox: 250 },
+            onScanSuccess
         );
-        html5QrcodeScanner.render(onScanSuccess);
+
+        // Benutzer manuell löschen (Passwortgeschützt)
+        function manualDeleteAllUsers(password) {
+            const adminPassword = "meinAdminPasswort"; // Passwort hier festlegen
+            if (password === adminPassword) {
+                users = {};
+                saveUsers();
+                console.log("Alle Benutzer wurden manuell gelöscht.");
+                alert("Alle Benutzer wurden gelöscht.");
+            } else {
+                console.error("Falsches Passwort! Zugriff verweigert.");
+                alert("Falsches Passwort! Zugriff verweigert.");
+            }
+        }
     </script>
 </body>
 </html>
